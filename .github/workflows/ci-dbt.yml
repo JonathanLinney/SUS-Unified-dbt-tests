@@ -1,0 +1,31 @@
+name: dbt CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dbt-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dbt-core
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core
+
+      - name: dbt --version
+        run: dbt --version
+
+      - name: dbt compile
+        run: dbt compile
+        # Note: if your project needs a profiles.yml or adapter, add secrets and setup before this step.

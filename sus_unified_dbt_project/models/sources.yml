@@ -1,0 +1,31 @@
+version: 2
+
+sources:
+  - name: sus_unified_apc
+    database: DATA_LAKE
+    schema: SUS_UNIFIED_APC
+    description: "Source for SUS APC spell data (DATA_LAKE.SUS_UNIFIED_APC)."
+    tables:
+      # 'name' is the simple internal name dbt uses (solves compilation error)
+      - name: spell
+        # 'identifier' is the exact case-sensitive name Snowflake must see (solves execution error)
+        identifier: '"spell"'
+        description: "Spell-level records (raw)."
+
+  - name: sus_unified_op
+    schema: SUS_UNIFIED_OP
+    database: DATA_LAKE
+    description: "Source for SUS OP appointment data (DATA_LAKE.SUS_UNIFIED_OP)."
+    tables:
+      - name: appointment
+        identifier: '"appointment"'
+        description: "Appointment-level records (raw)."
+
+  - name: sus_unified_ecds
+    database: DATA_LAKE
+    schema: SUS_UNIFIED_ECDS
+    description: "Source for Emergency Care Data Set (DATA_LAKE.SUS_UNIFIED_ECDS)."
+    tables:
+      - name: emergency_care
+        identifier: '"emergency_care"'
+        description: "Emergency care encounter records (raw)."

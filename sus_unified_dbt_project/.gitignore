@@ -1,0 +1,35 @@
+target/
+dbt_packages/
+logs/
+
+# Environment & secrets
+.env
+.env.*         # any env variants
+.env.local
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# dbt / local config / outputs
+profiles.yml
+manifest.json
+run_results.json
+logs/
+target/
+
+# Excel / spreadsheet outputs
+*.xlsx
+*.xls
+*.xlsm
+~$*          # Office temp files
+outputs/
+excel_outputs/
