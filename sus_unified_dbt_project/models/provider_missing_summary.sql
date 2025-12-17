@@ -12,7 +12,7 @@
 ) }}
 
 WITH 
--- Get the raw data with records count (same as what Python queries)
+-- Get the raw data with records count (same as what Python Excel building queries)
 apc_raw AS (
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM {{ ref('provider_daily_apc_activity_DBT') }}
@@ -41,7 +41,7 @@ apc_providers AS (SELECT DISTINCT PROVIDER FROM apc_raw),
 op_providers AS (SELECT DISTINCT PROVIDER FROM op_raw),
 ecds_providers AS (SELECT DISTINCT PROVIDER FROM ecds_raw),
 
--- Create the expected grid (same as Python's pivot structure)
+-- Create the expected grid (same as Python's Excel pivot structure)
 -- For APC: all APC providers × all APC dates
 apc_expected AS (
     SELECT p.PROVIDER, d.ACTIVITY_DATE, 'APC' AS dataset
@@ -63,7 +63,7 @@ ecds_expected AS (
 
 -- Find missing...
 -- The logic is where provider submission is expected (ie. submissions have come in for other providers that day) 
---- so Day x Provider grid includes that date. Records = 0 is a placeholder in case source is aggregated to 0 instead of missing.
+--- so Day x Provider grid includes that date. Records = 0 is a future placeholder in case source is aggregated to 0 instead of being missing.
 apc_missing AS (
     SELECT e.PROVIDER, e.ACTIVITY_DATE, e.dataset
     FROM apc_expected e

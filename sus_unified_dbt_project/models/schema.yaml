@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: provider_monthly_activity_DBT
+  - name: provider_daily_apc_activity_DBT
     description: "Monthly activity by provider"
     columns:
 
@@ -11,8 +11,8 @@ models:
           - not_null
           - unique
 
-      - name: activity_month
-        description: "Month of activity"
+      - name: activity_date
+        description: "Date of activity"
         tests:
           - not_null
           

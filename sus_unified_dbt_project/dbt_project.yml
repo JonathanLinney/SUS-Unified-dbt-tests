@@ -34,3 +34,8 @@ models:
     # example:
     +materialized: view   # therefore this is the universal default for all models
                          # in this project unless overridden in a specific model file
+
+
+on-run-end: 
+  - "{{ log_test_results() }}"
+  - "{{ log_dbt_results() }}"

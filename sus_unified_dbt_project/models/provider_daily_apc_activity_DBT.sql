@@ -3,8 +3,8 @@
 --- Created by: J.Linney | dbt test file for APC provider daily activity
 
 -- Add config overrides in here, eg. comment added to snowflake model metatadata
--- and materialisation type - although technically redundant here if declared in dbt_project.yml 
--- so just including it for clarity whilst testing
+
+-- and materialisation type -  technically redundant here if declared in dbt_project.yml so just including it for clarity whilst testing
 
 --- provider_daily_apc_activity_DBT.sql
 --- Created by: J.Linney | dbt test file for APC provider daily activity
