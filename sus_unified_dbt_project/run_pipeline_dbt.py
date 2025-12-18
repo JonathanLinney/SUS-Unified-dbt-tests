@@ -256,7 +256,7 @@ def export_to_excel(df_summary, df_inpatient, df_op, df_ecds, filename="provider
     ws.title = "Provider Daily Status"
 
     # Summary block
-    build_summary_table(ws, df_summary, "Provider Missing Days Summary (Last 20 Days)", start_row=1)
+    build_summary_table(ws, df_summary, "Provider Missing Days Summary (Rolling 20 Day Monitoring Window)", start_row=1)
 
     # Spacer
     ws.append([]); ws.append([])
@@ -287,17 +287,22 @@ if __name__ == "__main__":
     df_inpatient = query_snowflake_activity("""
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM PROVIDER_DAILY_APC_ACTIVITY_DBT
-    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '20 days'
+    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+    AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
 """)
-    df_op = query_snowflake_activity("""
+
+df_op = query_snowflake_activity("""
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM PROVIDER_DAILY_OP_ACTIVITY_DBT
-    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '20 days'
+    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+    AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
 """)
-    df_ecds = query_snowflake_activity("""
+
+df_ecds = query_snowflake_activity("""
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM PROVIDER_DAILY_ECDS_ACTIVITY_DBT
-    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '20 days'
+    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+    AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
 """)
 
     if df_summary.empty or df_inpatient.empty or df_op.empty or df_ecds.empty:

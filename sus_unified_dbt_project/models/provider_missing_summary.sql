@@ -12,23 +12,25 @@
 ) }}
 
 WITH 
--- Get the raw data with records count (same as what Python Excel building queries)
 apc_raw AS (
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM {{ ref('provider_daily_apc_activity_DBT') }}
-    WHERE ACTIVITY_DATE >= DATEADD(day, -20, CURRENT_DATE)
+    WHERE ACTIVITY_DATE >= DATEADD(day, -34, CURRENT_DATE)  -- Changed from -20
+    AND ACTIVITY_DATE < DATEADD(day, -14, CURRENT_DATE)     -- NEW
 ),
 
 op_raw AS (
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM {{ ref('provider_daily_op_activity_DBT') }}
-    WHERE ACTIVITY_DATE >= DATEADD(day, -20, CURRENT_DATE)
+    WHERE ACTIVITY_DATE >= DATEADD(day, -34, CURRENT_DATE)  -- Changed from -20
+    AND ACTIVITY_DATE < DATEADD(day, -14, CURRENT_DATE)     -- NEW
 ),
 
 ecds_raw AS (
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM {{ ref('provider_daily_ecds_activity_DBT') }}
-    WHERE ACTIVITY_DATE >= DATEADD(day, -20, CURRENT_DATE)
+    WHERE ACTIVITY_DATE >= DATEADD(day, -34, CURRENT_DATE)  -- Changed from -20
+    AND ACTIVITY_DATE < DATEADD(day, -14, CURRENT_DATE)     -- NEW
 ),
 
 -- Get all unique dates that appear in each dataset
