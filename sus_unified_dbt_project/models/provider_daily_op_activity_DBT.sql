@@ -4,11 +4,12 @@
 -- Add config overrides in here, eg. comment added to snowflake model metadata
 -- and materialisation type - although technically redundant here if declared in dbt_project.yml 
 -- so just including it for clarity whilst testing
+-- NOTE (18/12/25): Changed materialization now from view to table to as missing_summary test running too early on blank views, reulting in it being empty
 
 {{ config(
-    materialized='view',
+    materialized='table',
     post_hook=[
-      "COMMENT ON VIEW {{ this }} IS 'Created by: J.Linney | dbt test file for OP provider daily activity'"
+      "COMMENT ON TABLE {{ this }} IS 'Created by: J.Linney | dbt test file for OP provider daily activity'"
     ]
 ) }}
 

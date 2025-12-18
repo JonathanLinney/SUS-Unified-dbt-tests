@@ -5,9 +5,9 @@
 
 
 {{ config(
-    materialized='view',
+    materialized='table',
     post_hook=[
-      "COMMENT ON VIEW {{ this }} IS 'Created by: J.Linney | dbt summary model for missing provider activity'"
+      "COMMENT ON TABLE {{ this }} IS 'Created by: J.Linney | dbt summary model for missing provider activity'"
     ]
 ) }}
 
