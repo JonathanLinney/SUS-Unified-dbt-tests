@@ -31,7 +31,7 @@ SELECT
     COUNT(*) AS records
 FROM base b
 LEFT JOIN provider_lookup p ON b.provider_code = p.REPORTING_CODE
-WHERE b.activity_date >= DATEADD(day, -44, CURRENT_DATE)  -- Changed from -30
+WHERE b.activity_date >= DATEADD(day, -744, CURRENT_DATE)  -- 2 years monitoring window
 AND b.activity_date < DATEADD(day, -14, CURRENT_DATE)     -- NEW: Exclude last 2 weeks
 AND b.provider_code IN ('RRV', 'RKE', 'RAP','RAL','RP4','RP6','RAN')
 GROUP BY provider, activity_date

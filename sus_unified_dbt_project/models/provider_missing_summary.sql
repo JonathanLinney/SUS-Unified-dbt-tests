@@ -15,21 +15,21 @@ WITH
 apc_raw AS (
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM {{ ref('provider_daily_apc_activity_DBT') }}
-    WHERE ACTIVITY_DATE >= DATEADD(day, -34, CURRENT_DATE)  -- Changed from -20
+    WHERE ACTIVITY_DATE >= DATEADD(day, -744, CURRENT_DATE)  -- 2 years monitoring window
     AND ACTIVITY_DATE < DATEADD(day, -14, CURRENT_DATE)     -- NEW
 ),
 
 op_raw AS (
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM {{ ref('provider_daily_op_activity_DBT') }}
-    WHERE ACTIVITY_DATE >= DATEADD(day, -34, CURRENT_DATE)  -- Changed from -20
+    WHERE ACTIVITY_DATE >= DATEADD(day, -744, CURRENT_DATE)  -- 2 years monitoring window
     AND ACTIVITY_DATE < DATEADD(day, -14, CURRENT_DATE)     -- NEW
 ),
 
 ecds_raw AS (
     SELECT PROVIDER, ACTIVITY_DATE, RECORDS
     FROM {{ ref('provider_daily_ecds_activity_DBT') }}
-    WHERE ACTIVITY_DATE >= DATEADD(day, -34, CURRENT_DATE)  -- Changed from -20
+    WHERE ACTIVITY_DATE >= DATEADD(day, -744, CURRENT_DATE)  -- 2 years monitoring window
     AND ACTIVITY_DATE < DATEADD(day, -14, CURRENT_DATE)     -- NEW
 ),
 
@@ -44,7 +44,7 @@ op_providers AS (SELECT DISTINCT PROVIDER FROM op_raw),
 ecds_providers AS (SELECT DISTINCT PROVIDER FROM ecds_raw),
 
 -- Create the expected grid (same as Python's Excel pivot structure)
--- For APC: all APC providers × all APC dates
+-- Example for APC: all APC providers × all APC dates
 apc_expected AS (
     SELECT p.PROVIDER, d.ACTIVITY_DATE, 'APC' AS dataset
     FROM apc_providers p

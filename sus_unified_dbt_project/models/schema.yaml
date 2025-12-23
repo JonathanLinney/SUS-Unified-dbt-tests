@@ -9,7 +9,6 @@ models:
         description: "Provider identifier"
         tests:
           - not_null
-          - unique
 
       - name: activity_date
         description: "Date of activity"

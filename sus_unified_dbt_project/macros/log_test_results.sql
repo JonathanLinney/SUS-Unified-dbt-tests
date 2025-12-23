@@ -42,7 +42,7 @@
             '{{ invocation_id }}',
             '{{ result.node.unique_id }}',
             '{{ result.node.test_metadata.name if result.node.test_metadata else "custom" }}',
-            '{{ result.node.refs[0][0] if result.node.refs else "" }}',
+            '{{ result.node.depends_on.nodes[0].split(".")[-1] if result.node.depends_on.nodes else "" }}',
             '{{ result.node.column_name if result.node.column_name else "" }}',
             CURRENT_TIMESTAMP(),
             '{{ result.status }}',

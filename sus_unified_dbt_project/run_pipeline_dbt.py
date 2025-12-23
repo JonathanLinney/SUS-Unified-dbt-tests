@@ -63,7 +63,7 @@ def query_snowflake_summary():
         role=os.environ.get("SNOWFLAKE_ROLE"),
         authenticator=os.environ.get("SNOWFLAKE_AUTHENTICATOR", "externalbrowser"),
     )
-    cur = conn.cursor()
+    cur = conn.cursor()  # location of provider_missing_summary dbt model, below, secured via .env
     cur.execute("""
         SELECT 
             PROVIDER, 
@@ -72,7 +72,7 @@ def query_snowflake_summary():
             ECDS_MISSING_DAYS,
             TOTAL_MISSING_SUBMISSIONS,
             ACTION_REQUIRED
-        FROM PROVIDER_MISSING_SUMMARY
+        FROM PROVIDER_MISSING_SUMMARY   
     """)
     rows = cur.fetchall()
     columns = [desc[0] for desc in cur.description]
@@ -285,25 +285,25 @@ if __name__ == "__main__":
     run_dbt()
     df_summary   = query_snowflake_summary()
     df_inpatient = query_snowflake_activity("""
-    SELECT PROVIDER, ACTIVITY_DATE, RECORDS
-    FROM PROVIDER_DAILY_APC_ACTIVITY_DBT
-    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
-    AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
-""")
+        SELECT PROVIDER, ACTIVITY_DATE, RECORDS
+        FROM PROVIDER_DAILY_APC_ACTIVITY_DBT
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+        AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
+    """)
 
-df_op = query_snowflake_activity("""
-    SELECT PROVIDER, ACTIVITY_DATE, RECORDS
-    FROM PROVIDER_DAILY_OP_ACTIVITY_DBT
-    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
-    AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
-""")
+    df_op = query_snowflake_activity("""
+        SELECT PROVIDER, ACTIVITY_DATE, RECORDS
+        FROM PROVIDER_DAILY_OP_ACTIVITY_DBT
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+        AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
+    """)
 
-df_ecds = query_snowflake_activity("""
-    SELECT PROVIDER, ACTIVITY_DATE, RECORDS
-    FROM PROVIDER_DAILY_ECDS_ACTIVITY_DBT
-    WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
-    AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
-""")
+    df_ecds = query_snowflake_activity("""
+        SELECT PROVIDER, ACTIVITY_DATE, RECORDS
+        FROM PROVIDER_DAILY_ECDS_ACTIVITY_DBT
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+        AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
+    """)
 
     if df_summary.empty or df_inpatient.empty or df_op.empty or df_ecds.empty:
         print("One or more datasets are empty. Please check dbt models and Snowflake sources.")
