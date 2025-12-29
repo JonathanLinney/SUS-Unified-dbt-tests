@@ -4,11 +4,11 @@
   {% if execute %}
 
     {# --- Ensure schema exists --- #}
-    {% do run_query("CREATE SCHEMA IF NOT EXISTS DATA_LAKE__NCL") %}
+    {% do run_query("CREATE SCHEMA IF NOT EXISTS COMMISSIONING_MODELLING") %}
 
     {# --- Create test results table if not exists --- #}
     {% do run_query("""
-      CREATE TABLE IF NOT EXISTS DATA_LAKE__NCL.DBT_OBSERVABILITY_TESTS (
+      CREATE TABLE IF NOT EXISTS COMMISSIONING_MODELLING.DBT_OBSERVABILITY_TESTS (
         invocation_id STRING,
         test_name STRING,
         test_type STRING,
@@ -25,7 +25,7 @@
     {% if test_results | length > 0 %}
 
       {% set insert_sql %}
-        INSERT INTO DATA_LAKE__NCL.DBT_OBSERVABILITY_TESTS (
+        INSERT INTO COMMISSIONING_MODELLING.DBT_OBSERVABILITY_TESTS (
           invocation_id,
           test_name,
           test_type,

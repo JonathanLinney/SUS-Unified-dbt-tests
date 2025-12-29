@@ -4,11 +4,11 @@
   {% if execute %}
 
     {# --- Ensure schema exists --- #}
-    {% do run_query("CREATE SCHEMA IF NOT EXISTS DATA_LAKE__NCL") %}
+    {% do run_query("CREATE SCHEMA IF NOT EXISTS COMMISSIONING_MODELLING") %}
 
     {# --- Create run results table if not exists --- #}
     {% do run_query("""
-      CREATE TABLE IF NOT EXISTS DATA_LAKE__NCL.DBT_OBSERVABILITY_RUNS (
+      CREATE TABLE IF NOT EXISTS COMMISSIONING_MODELLING.DBT_OBSERVABILITY_RUNS (
         run_id STRING,
         invocation_id STRING,
         execution_time TIMESTAMP,
@@ -20,7 +20,7 @@
     """) %}
 
     {% set results_sql %}
-      INSERT INTO DATA_LAKE__NCL.DBT_OBSERVABILITY_RUNS
+      INSERT INTO COMMISSIONING_MODELLING.DBT_OBSERVABILITY_RUNS
       SELECT
         '{{ invocation_id }}' AS run_id,
         '{{ invocation_id }}' AS invocation_id,
