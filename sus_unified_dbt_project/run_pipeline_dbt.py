@@ -4,13 +4,11 @@
 # Script runs from the sus_unified_dbt_project folder - set by 'project_dir' variable
 ##################################################
 
-## Set the number of days to report on in MAIN PIPELINE RUN SECTION at the end of this script ##
-
 import subprocess
 import snowflake.connector
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Border, Side, Alignment
+from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 import os
@@ -34,8 +32,9 @@ def run_dbt():
     except subprocess.CalledProcessError:
         print("⚠️ dbt test failed, continuing with pipeline...")
 
-def query_snowflake_activity(sql):
-    conn = snowflake.connector.connect(
+def get_connection():
+    """Create and return a Snowflake connection."""
+    return snowflake.connector.connect(
         user=os.environ["SNOWFLAKE_USER"],
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
@@ -44,57 +43,168 @@ def query_snowflake_activity(sql):
         role=os.environ.get("SNOWFLAKE_ROLE"),
         authenticator=os.environ.get("SNOWFLAKE_AUTHENTICATOR", "externalbrowser"),
     )
+
+def query_snowflake_activity(sql):
+    """Query activity data and return as DataFrame."""
+    conn = get_connection()
     cur = conn.cursor()
     cur.execute(sql)
     rows = cur.fetchall()
     columns = [desc[0] for desc in cur.description]
+    conn.close()
+   
     df = pd.DataFrame(rows, columns=columns)
     df["ACTIVITY_DATE"] = pd.to_datetime(df["ACTIVITY_DATE"])
     df["DAY_LABEL"] = df["ACTIVITY_DATE"].dt.strftime("%d/%m/%Y")
     return df
 
-def query_snowflake_summary():
-    conn = snowflake.connector.connect(
-        user=os.environ["SNOWFLAKE_USER"],
-        account=os.environ["SNOWFLAKE_ACCOUNT"],
-        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
-        database=os.environ["SNOWFLAKE_DATABASE"],
-        schema=os.environ["SNOWFLAKE_SCHEMA"],
-        role=os.environ.get("SNOWFLAKE_ROLE"),
-        authenticator=os.environ.get("SNOWFLAKE_AUTHENTICATOR", "externalbrowser"),
-    )
-    cur = conn.cursor()  # location of provider_missing_summary dbt model, below, secured via .env
-    cur.execute("""
-        SELECT 
-            PROVIDER, 
-            APC_MISSING_DAYS,
-            OP_MISSING_DAYS,
-            ECDS_MISSING_DAYS,
-            TOTAL_MISSING_SUBMISSIONS,
-            ACTION_REQUIRED
-        FROM PROVIDER_MISSING_SUMMARY   
-    """)
-    rows = cur.fetchall()
-    columns = [desc[0] for desc in cur.description]
-    df = pd.DataFrame(rows, columns=columns)
-    return df
+# Trusts that are expected to submit ECDS (ie. have A&E departments)
+ECDS_PROVIDERS = [
+    "University College London Hospitals NHS Foundation Trust",
+    "Whittington Health NHS Trust",
+    "Royal Free London NHS Foundation Trust"
+    "Moorfields Eye Hospital NHS Foundation Trust",
+]
 
-def build_summary_table(ws, df, title, start_row):
-    # Title row
-    ws.cell(row=start_row, column=1, value=title).alignment = Alignment(horizontal="left")
+def calculate_dynamic_summary(df_apc, df_op, df_ecds, all_providers_list=None, ecds_providers=None): 
+    """ 
+    Calculate summary of missing days dynamically from the filtered datasets. 
+    Allows restricting ECDS to only providers that actually have ECDS feeds. 
+    """
+
+    # Default: if no ECDS list provided, assume all providers have ECDS    
+    # - If explicitly provided, use it 
+    # - Else, if we have a master provider list, assume all have ECDS (backwards compatible) 
+    # - Else, no ECDS providers 
+    if ecds_providers is None: 
+        if all_providers_list is not None: 
+            ecds_providers = list(all_providers_list) 
+        else: 
+            ecds_providers = []
+
+    # Helper: densify a dataset
+    def densify(df):
+        if df.empty:
+            return df
+        df = df.copy()
+        all_dates = pd.date_range(df["ACTIVITY_DATE"].min(), df["ACTIVITY_DATE"].max(), freq='D')
+        providers = df["PROVIDER"].unique()
+
+        full_grid = pd.MultiIndex.from_product(
+            [providers, all_dates],
+            names=["PROVIDER", "ACTIVITY_DATE"]
+        ).to_frame(index=False)
+
+        merged = full_grid.merge(df[["PROVIDER", "ACTIVITY_DATE", "RECORDS"]],
+                                 on=["PROVIDER", "ACTIVITY_DATE"],
+                                 how="left")
+        merged["RECORDS"] = merged["RECORDS"].fillna(0)
+        return merged
+
+    # If we have a master provider list, fill missing providers appropriately
+    if all_providers_list:
+        # Determine date range across all datasets
+        all_dates = pd.concat([
+            df_apc["ACTIVITY_DATE"] if not df_apc.empty else pd.Series(dtype='datetime64[ns]'),
+            df_op["ACTIVITY_DATE"] if not df_op.empty else pd.Series(dtype='datetime64[ns]'),
+            df_ecds["ACTIVITY_DATE"] if not df_ecds.empty else pd.Series(dtype='datetime64[ns]')
+        ])
+
+        if len(all_dates) > 0:
+            date_range = pd.date_range(start=all_dates.min(), end=all_dates.max(), freq='D')
+
+            for provider in all_providers_list:
+
+                # APC fill
+                if provider not in df_apc["PROVIDER"].values:
+                    df_apc = pd.concat([df_apc, pd.DataFrame({
+                        "PROVIDER": [provider] * len(date_range),
+                        "ACTIVITY_DATE": date_range,
+                        "RECORDS": [0] * len(date_range)
+                    })], ignore_index=True)
+
+                # OP fill
+                if provider not in df_op["PROVIDER"].values:
+                    df_op = pd.concat([df_op, pd.DataFrame({
+                        "PROVIDER": [provider] * len(date_range),
+                        "ACTIVITY_DATE": date_range,
+                        "RECORDS": [0] * len(date_range)
+                    })], ignore_index=True)
+
+                # ECDS fill — **only for providers that actually have ECDS**
+                if provider in ecds_providers and provider not in df_ecds["PROVIDER"].values:
+                    df_ecds = pd.concat([df_ecds, pd.DataFrame({
+                        "PROVIDER": [provider] * len(date_range),
+                        "ACTIVITY_DATE": date_range,
+                        "RECORDS": [0] * len(date_range)
+                    })], ignore_index=True)
+
+    # Densify
+    apc_full = densify(df_apc)
+    op_full = densify(df_op)
+    ecds_full = densify(df_ecds)
+
+    # Build provider list for summary
+    all_providers = sorted(all_providers_list) if all_providers_list else sorted(
+        set(df_apc["PROVIDER"]) | set(df_op["PROVIDER"]) | set(df_ecds["PROVIDER"])
+    )
+
+    summary_data = []
+    for provider in all_providers:
+        apc_missing = len(apc_full[(apc_full["PROVIDER"] == provider) & (apc_full["RECORDS"] == 0)])
+        op_missing = len(op_full[(op_full["PROVIDER"] == provider) & (op_full["RECORDS"] == 0)])
+
+        # ECDS only counts if provider is expected to have ECDS
+        if provider in ecds_providers:
+            ecds_missing = len(ecds_full[(ecds_full["PROVIDER"] == provider) & (ecds_full["RECORDS"] == 0)])
+        else:
+            ecds_missing = 0
+
+        total = apc_missing + op_missing + ecds_missing
+
+        summary_data.append({
+            "PROVIDER": provider,
+            "APC_MISSING_DAYS": apc_missing,
+            "OP_MISSING_DAYS": op_missing,
+            "ECDS_MISSING_DAYS": ecds_missing,
+            "TOTAL_MISSING_SUBMISSIONS": total,
+            "ACTION_REQUIRED": "Contact ISL about missing submissions" if total > 0 else "All submissions complete"
+        })
+
+    return pd.DataFrame(summary_data), df_apc, df_op, df_ecds
+
+def build_summary_table(ws, df, title, start_row, is_unstable=False):
+    """Build summary table in Excel worksheet."""
+    # Title row with warning for unstable data
+    title_cell = ws.cell(row=start_row, column=1, value=title)
+    title_cell.alignment = Alignment(horizontal="left")
+    title_cell.font = Font(bold=True, size=12)
+   
+    if is_unstable:
+        warning_cell = ws.cell(row=start_row+1, column=1,
+                              value="⚠️ Warning: This data covers the last 14 days and may still be updating")
+        warning_cell.font = Font(color="FF0000", italic=True)
+        warning_cell.alignment = Alignment(horizontal="left")
+        header_row_offset = 2
+    else:
+        header_row_offset = 1
 
     # Header row
     headers = ["Provider", "APC Missing", "OP Missing", "ECDS Missing", "Total Missing", "Action Required"]
-    ws.append(headers)
+    header_row = start_row + header_row_offset
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=header_row, column=col_idx, value=header)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
 
     # Data rows
     for _, row in df.iterrows():
         ws.append([
-            row["PROVIDER"], 
-            row["APC_MISSING_DAYS"], 
+            row["PROVIDER"],
+            row["APC_MISSING_DAYS"],
             row["OP_MISSING_DAYS"],
             row["ECDS_MISSING_DAYS"],
-            row["TOTAL_MISSING_SUBMISSIONS"], 
+            row["TOTAL_MISSING_SUBMISSIONS"],
             row["ACTION_REQUIRED"]
         ])
 
@@ -104,7 +214,6 @@ def build_summary_table(ws, df, title, start_row):
     thin_border = Border(left=Side(style="thin"), right=Side(style="thin"),
                          top=Side(style="thin"), bottom=Side(style="thin"))
 
-    header_row = start_row + 1
     first_data_row = header_row + 1
     last_row = ws.max_row
     last_col = 6  # Provider, APC, OP, ECDS, Total, Action
@@ -119,7 +228,7 @@ def build_summary_table(ws, df, title, start_row):
         provider, apc, op, ecds, total, action = row
         for c in row:
             c.border = thin_border
-        
+       
         if int(total.value) > 0:
             for c in row:
                 c.fill = red_fill
@@ -128,6 +237,7 @@ def build_summary_table(ws, df, title, start_row):
                 c.fill = green_fill
 
 def build_pivot_table(ws, df, title, start_row):
+    """Build pivot table with daily activity in Excel worksheet."""
     df["ACTIVITY_DATE"] = pd.to_datetime(df["ACTIVITY_DATE"])
     df["DAY_LABEL"] = df["ACTIVITY_DATE"].dt.strftime("%d/%m/%Y")
     df["WEEKDAY"] = df["ACTIVITY_DATE"].dt.day_name().str[:3]  # Mon, Tue, ...
@@ -250,65 +360,193 @@ def build_pivot_table(ws, df, title, start_row):
         ws.column_dimensions[get_column_letter(i)].width = 11.36
 
 
-def export_to_excel(df_summary, df_inpatient, df_op, df_ecds, filename="provider_status.xlsx"):
+def export_to_excel(stable_data, unstable_data, filename="provider_status.xlsx"):
+    """
+    Export data to Excel with two sheets:
+    1. Stable data (60 days, excluding last 14)
+    2. Unstable data (last 14 days)
+    """
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Provider Daily Status"
-
+   
+    # ===== STABLE DATA SHEET (60 days) =====
+    ws_stable = wb.active
+    ws_stable.title = "Stable Data (60 Days)"
+   
     # Summary block
-    build_summary_table(ws, df_summary, "Provider Missing Days Summary (Rolling 20 Day Monitoring Window)", start_row=1)
-
+    build_summary_table(
+        ws_stable,
+        stable_data["summary"],
+        "Provider Missing Days Summary (60 Days Stable Data, Excluding Last 14 Days)",
+        start_row=1,
+        is_unstable=False
+    )
+   
     # Spacer
-    ws.append([]); ws.append([])
-
+    ws_stable.append([]); ws_stable.append([])
+   
     # Inpatient block
-    build_pivot_table(ws, df_inpatient, "Inpatient Provider Daily Status", start_row=ws.max_row+1)
-
+    build_pivot_table(ws_stable, stable_data["apc"], "Inpatient Provider Daily Status", start_row=ws_stable.max_row+1)
+   
     # Outpatient block
-    build_pivot_table(ws, df_op, "Outpatient Provider Daily Status", start_row=ws.max_row+3)
-
+    build_pivot_table(ws_stable, stable_data["op"], "Outpatient Provider Daily Status", start_row=ws_stable.max_row+3)
+   
     # ECDS block
-    build_pivot_table(ws, df_ecds, "Emergency Attendances (ECDS) Daily Status", start_row=ws.max_row+3)
-
-    ws.freeze_panes = ws["B2"] # Freeze top row and first column
+    build_pivot_table(ws_stable, stable_data["ecds"], "Emergency Attendances (ECDS) Daily Status", start_row=ws_stable.max_row+3)
+   
+    ws_stable.freeze_panes = ws_stable["B2"]
+   
+    # ===== UNSTABLE DATA SHEET (14 days) =====
+    ws_unstable = wb.create_sheet(title="Unstable Data (Last 14 Days)")
+   
+    # Summary block with warning
+    build_summary_table(
+        ws_unstable,
+        unstable_data["summary"],
+        "Provider Missing Days Summary (Last 14 Days - Data Still Updating)",
+        start_row=1,
+        is_unstable=True
+    )
+   
+    # Spacer
+    ws_unstable.append([]); ws_unstable.append([])
+   
+    # Inpatient block
+    build_pivot_table(ws_unstable, unstable_data["apc"], "Inpatient Provider Daily Status (Unstable)", start_row=ws_unstable.max_row+1)
+   
+    # Outpatient block
+    build_pivot_table(ws_unstable, unstable_data["op"], "Outpatient Provider Daily Status (Unstable)", start_row=ws_unstable.max_row+3)
+   
+    # ECDS block
+    build_pivot_table(ws_unstable, unstable_data["ecds"], "Emergency Attendances (ECDS) Daily Status (Unstable)", start_row=ws_unstable.max_row+3)
+   
+    ws_unstable.freeze_panes = ws_unstable["B2"]
+   
     wb.save(filename)
     print(f"Excel report saved as {filename}")
     return filename
 
 def open_excel(filename):
+    """Attempt to open Excel file."""
     try:
         os.startfile(filename)
     except Exception:
         pass
 
 if __name__ == "__main__":
+    print("="*60)
+    print("PROVIDER COMPLIANCE MONITORING - dbt Pipeline")
+    print("="*60)
+   
+    # Run dbt
     run_dbt()
-    df_summary   = query_snowflake_summary()
-    df_inpatient = query_snowflake_activity("""
+   
+    print("\n" + "="*60)
+    print("Querying Snowflake for stable data (60 days)...")
+    print("="*60)
+   
+    # ===== STABLE DATA (60 days, excluding last 14) =====
+    df_apc_stable = query_snowflake_activity("""
         SELECT PROVIDER, ACTIVITY_DATE, RECORDS
         FROM PROVIDER_DAILY_APC_ACTIVITY_DBT
-        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '74 days'
         AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
     """)
-
-    df_op = query_snowflake_activity("""
+   
+    df_op_stable = query_snowflake_activity("""
         SELECT PROVIDER, ACTIVITY_DATE, RECORDS
         FROM PROVIDER_DAILY_OP_ACTIVITY_DBT
-        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '74 days'
         AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
     """)
-
-    df_ecds = query_snowflake_activity("""
+   
+    df_ecds_stable = query_snowflake_activity("""
         SELECT PROVIDER, ACTIVITY_DATE, RECORDS
         FROM PROVIDER_DAILY_ECDS_ACTIVITY_DBT
-        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '34 days'
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '74 days'
         AND ACTIVITY_DATE < CURRENT_DATE - INTERVAL '14 days'
     """)
+   
+    # Get master list of all providers from stable data
+    all_providers = sorted(set(
+        list(df_apc_stable["PROVIDER"].unique()) +
+        list(df_op_stable["PROVIDER"].unique()) +
+        list(df_ecds_stable["PROVIDER"].unique())
+    ))
+   
+    print(f"Found {len(all_providers)} providers: {', '.join(all_providers)}")
+   
+    # Calculate dynamic summary for stable data (no need to fill, all providers present)
+    df_summary_stable, df_apc_stable, df_op_stable, df_ecds_stable = calculate_dynamic_summary(
+        df_apc_stable, df_op_stable, df_ecds_stable
+    )
+   
+    print("\n" + "="*60)
+    print("Querying Snowflake for unstable data (last 14 days)...")
+    print("="*60)
+   
+    # ===== UNSTABLE DATA (last 14 days) =====
+    df_apc_unstable = query_snowflake_activity("""
+        SELECT PROVIDER, ACTIVITY_DATE, RECORDS
+        FROM PROVIDER_DAILY_APC_ACTIVITY_DBT
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '14 days'
+    """)
+   
+    df_op_unstable = query_snowflake_activity("""
+        SELECT PROVIDER, ACTIVITY_DATE, RECORDS
+        FROM PROVIDER_DAILY_OP_ACTIVITY_DBT
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '14 days'
+    """)
+   
+    df_ecds_unstable = query_snowflake_activity("""
+        SELECT PROVIDER, ACTIVITY_DATE, RECORDS
+        FROM PROVIDER_DAILY_ECDS_ACTIVITY_DBT
+        WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '14 days'
+    """)
+   
+    # Calculate dynamic summary for unstable data with full provider list (excluding ECDS filtering)
+    # This ensures providers with NO submissions in last 14 days still appear
+    df_summary_unstable, df_apc_unstable, df_op_unstable, df_ecds_unstable = calculate_dynamic_summary(
+    df_apc_unstable,
+    df_op_unstable,
+    df_ecds_unstable,
+    all_providers_list=all_providers,
+    ecds_providers=ECDS_PROVIDERS
+)
 
-    if df_summary.empty or df_inpatient.empty or df_op.empty or df_ecds.empty:
-        print("One or more datasets are empty. Please check dbt models and Snowflake sources.")
-        sys.exit(0)
-
-    filename = export_to_excel(df_summary, df_inpatient, df_op, df_ecds)
+   
+    # Check for empty datasets
+    if df_apc_stable.empty or df_op_stable.empty or df_ecds_stable.empty:
+        print("⚠️  One or more stable datasets are empty. Please check dbt models and Snowflake sources.")
+        sys.exit(1)
+   
+    print("\n" + "="*60)
+    print("Generating Excel report...")
+    print("="*60)
+   
+    # Package data for export
+    stable_data = {
+        "summary": df_summary_stable,
+        "apc": df_apc_stable,
+        "op": df_op_stable,
+        "ecds": df_ecds_stable
+    }
+   
+    unstable_data = {
+        "summary": df_summary_unstable,
+        "apc": df_apc_unstable,
+        "op": df_op_unstable,
+        "ecds": df_ecds_unstable
+    }
+   
+    filename = export_to_excel(stable_data, unstable_data)
     open_excel(filename)
-    print("dbt Project Pipeline completed successfully!")
+   
+    print("\n" + "="*60)
+    print("✅ dbt Project Pipeline completed successfully!")
+    print("="*60)
+    print(f"📊 Stable data: 60 days (excluding last 14)")
+    print(f"⚠️  Unstable data: Last 14 days")
+    print(f"👥 Providers tracked: {len(all_providers)}")
+    print(f"📁 File: {filename}")
+    print("="*60)
+
