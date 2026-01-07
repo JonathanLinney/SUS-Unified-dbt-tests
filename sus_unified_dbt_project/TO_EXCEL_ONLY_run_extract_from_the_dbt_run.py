@@ -1,5 +1,5 @@
 ##################################################
-# Script to run dbt models/tests, query the dbt models in Snowflake, and then export the results to Excel
+# Script to run query the dbt models in Snowflake (but not actually run dbt), and export the results to Excel
 ##################################################
 
 import snowflake.connector
@@ -47,7 +47,7 @@ def query_snowflake_activity(sql):
 ECDS_PROVIDERS = [
     "University College London Hospitals NHS Foundation Trust",
     "Whittington Health NHS Trust",
-    "Royal Free London NHS Foundation Trust"
+    "Royal Free London NHS Foundation Trust",
     "Moorfields Eye Hospital NHS Foundation Trust",
 ]
 
@@ -458,10 +458,15 @@ if __name__ == "__main__":
    
     print(f"Found {len(all_providers)} providers: {', '.join(all_providers)}")
    
-    # Calculate dynamic summary for stable data (no need to fill, all providers present)
+    # Calculate dynamic summary for stable data with full provider list
+    # PASS the master list and the ECDS specific list to ensure 0-record rows are generated
     df_summary_stable, df_apc_stable, df_op_stable, df_ecds_stable = calculate_dynamic_summary(
-        df_apc_stable, df_op_stable, df_ecds_stable
-    )
+    df_apc_stable, 
+    df_op_stable, 
+    df_ecds_stable,
+    all_providers_list=all_providers, # Ensure we use the full list
+    ecds_providers=ECDS_PROVIDERS     # Ensure ECDS-only Provider subset is respected
+)
    
     print("\n" + "="*60)
     print("Querying Snowflake for unstable data (last 14 days)...")
@@ -486,7 +491,7 @@ if __name__ == "__main__":
         WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '14 days'
     """)
    
-    # Calculate dynamic summary for unstable data with full provider list (excluding ECDS filtering)
+    # Calculate dynamic summary for unstable data with full provider list (plus ECDS-only filtering)
     # This ensures providers with NO submissions in last 14 days still appear
     df_summary_unstable, df_apc_unstable, df_op_unstable, df_ecds_unstable = calculate_dynamic_summary(
     df_apc_unstable,

@@ -62,7 +62,7 @@ def query_snowflake_activity(sql):
 ECDS_PROVIDERS = [
     "University College London Hospitals NHS Foundation Trust",
     "Whittington Health NHS Trust",
-    "Royal Free London NHS Foundation Trust"
+    "Royal Free London NHS Foundation Trust",
     "Moorfields Eye Hospital NHS Foundation Trust",
 ]
 
@@ -545,7 +545,7 @@ if __name__ == "__main__":
     print("✅ dbt Project Pipeline completed successfully!")
     print("="*60)
     print(f"📊 Stable data: 60 days (excluding last 14)")
-    print(f"⚠️  Unstable data: Last 14 days")
+    print(f"⚠️ Unstable data: Last 14 days")
     print(f"👥 Providers tracked: {len(all_providers)}")
     print(f"📁 File: {filename}")
     print("="*60)
