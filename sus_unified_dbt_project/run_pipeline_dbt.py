@@ -82,12 +82,17 @@ def calculate_dynamic_summary(df_apc, df_op, df_ecds, all_providers_list=None, e
         else: 
             ecds_providers = []
 
-    # Helper: densify a dataset
-    def densify(df):
+    # Helper: densify a dataset with optional max date forcing
+    def densify(df, force_max_date=None):
         if df.empty:
             return df
         df = df.copy()
-        all_dates = pd.date_range(df["ACTIVITY_DATE"].min(), df["ACTIVITY_DATE"].max(), freq='D')
+        
+        # Use forced max date if provided, otherwise use data's max
+        min_date = df["ACTIVITY_DATE"].min()
+        max_date = pd.to_datetime(force_max_date) if force_max_date is not None else df["ACTIVITY_DATE"].max()
+        
+        all_dates = pd.date_range(min_date, max_date, freq='D')
         providers = df["PROVIDER"].unique()
 
         full_grid = pd.MultiIndex.from_product(
@@ -100,6 +105,11 @@ def calculate_dynamic_summary(df_apc, df_op, df_ecds, all_providers_list=None, e
                                  how="left")
         merged["RECORDS"] = merged["RECORDS"].fillna(0)
         return merged
+
+    # Store the maximum dates from each dataset BEFORE filling missing providers
+    apc_max_date = df_apc["ACTIVITY_DATE"].max() if not df_apc.empty else None
+    op_max_date = df_op["ACTIVITY_DATE"].max() if not df_op.empty else None
+    ecds_max_date = df_ecds["ACTIVITY_DATE"].max() if not df_ecds.empty else None
 
     # If we have a master provider list, fill missing providers appropriately
     if all_providers_list:
@@ -139,10 +149,10 @@ def calculate_dynamic_summary(df_apc, df_op, df_ecds, all_providers_list=None, e
                         "RECORDS": [0] * len(date_range)
                     })], ignore_index=True)
 
-    # Densify
-    apc_full = densify(df_apc)
-    op_full = densify(df_op)
-    ecds_full = densify(df_ecds)
+    # Densify - use the max dates we stored earlier to ensure all providers extend to the same endpoint
+    apc_full = densify(df_apc, force_max_date=apc_max_date)
+    op_full = densify(df_op, force_max_date=op_max_date)
+    ecds_full = densify(df_ecds, force_max_date=ecds_max_date)
 
     # Build provider list for summary
     all_providers = sorted(all_providers_list) if all_providers_list else sorted(
@@ -238,14 +248,30 @@ def build_summary_table(ws, df, title, start_row, is_unstable=False):
 
 def build_pivot_table(ws, df, title, start_row):
     """Build pivot table with daily activity in Excel worksheet."""
+    # Handle empty dataframe
+    if df.empty:
+        ws.cell(row=start_row, column=1, value=f"{title} - No data available")
+        return
+    
     df["ACTIVITY_DATE"] = pd.to_datetime(df["ACTIVITY_DATE"])
     df["DAY_LABEL"] = df["ACTIVITY_DATE"].dt.strftime("%d/%m/%Y")
     df["WEEKDAY"] = df["ACTIVITY_DATE"].dt.day_name().str[:3]  # Mon, Tue, ...
 
     day_order = df[["ACTIVITY_DATE", "DAY_LABEL", "WEEKDAY"]].drop_duplicates().sort_values("ACTIVITY_DATE")
+    
+    # If day_order is empty, we can't build a pivot table
+    if day_order.empty:
+        ws.cell(row=start_row, column=1, value=f"{title} - No dates available")
+        return
+    
     day_labels_sorted = day_order["DAY_LABEL"].tolist()
     weekday_labels_sorted = day_order["WEEKDAY"].tolist()
     providers = sorted(df["PROVIDER"].unique())
+
+    # If no providers, return
+    if not providers:
+        ws.cell(row=start_row, column=1, value=f"{title} - No providers available")
+        return
 
     pivot_records = df.pivot(index="PROVIDER", columns="DAY_LABEL", values="RECORDS")
     pivot_records = pivot_records.reindex(index=providers, columns=day_labels_sorted)
@@ -288,22 +314,28 @@ def build_pivot_table(ws, df, title, start_row):
     for idx, cell in enumerate(ws[header_row], start=1):
         cell.alignment = Alignment(horizontal="center")
         if idx > 1:  # skip Provider column
-            activity_date = day_order.iloc[idx-2]["ACTIVITY_DATE"]
-            if activity_date.weekday() >= 5:  # Saturday/Sunday
-                cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-                cell.border = Border(left=Side(style="medium"), right=Side(style="medium"),
-                                     top=Side(style="medium"), bottom=Side(style="medium"))
+            # BOUNDS CHECK: Make sure idx-2 is within day_order range
+            day_idx = idx - 2
+            if day_idx < len(day_order):
+                activity_date = day_order.iloc[day_idx]["ACTIVITY_DATE"]
+                if activity_date.weekday() >= 5:  # Saturday/Sunday
+                    cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+                    cell.border = Border(left=Side(style="medium"), right=Side(style="medium"),
+                                         top=Side(style="medium"), bottom=Side(style="medium"))
 
     # Date header row
     ws.append(["Provider"] + day_labels_sorted)
     for idx, cell in enumerate(ws[header_row+1], start=1):
         cell.alignment = Alignment(horizontal="center")
         if idx > 1:
-            activity_date = day_order.iloc[idx-2]["ACTIVITY_DATE"]
-            if activity_date.weekday() >= 5:
-                cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-                cell.border = Border(left=Side(style="medium"), right=Side(style="medium"),
-                                     top=Side(style="medium"), bottom=Side(style="medium"))
+            # BOUNDS CHECK: Make sure idx-2 is within day_order range
+            day_idx = idx - 2
+            if day_idx < len(day_order):
+                activity_date = day_order.iloc[day_idx]["ACTIVITY_DATE"]
+                if activity_date.weekday() >= 5:
+                    cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+                    cell.border = Border(left=Side(style="medium"), right=Side(style="medium"),
+                                         top=Side(style="medium"), bottom=Side(style="medium"))
 
     # Data rows
     for provider, row in pivot.iterrows():
@@ -336,20 +368,25 @@ def build_pivot_table(ws, df, title, start_row):
             if c.value == "MISSING":
                 c.fill = red_fill
             elif isinstance(c.value, (int, float)):
-                # Determine if this column is weekend or weekday
-                activity_date = day_order.iloc[j-2]["ACTIVITY_DATE"]
-                is_weekend = activity_date.weekday() >= 5
-                stats = provider_stats[provider_name]["weekend" if is_weekend else "weekday"]
+                # BOUNDS CHECK: Determine if this column is weekend or weekday
+                day_idx = j - 2
+                if day_idx < len(day_order):
+                    activity_date = day_order.iloc[day_idx]["ACTIVITY_DATE"]
+                    is_weekend = activity_date.weekday() >= 5
+                    stats = provider_stats[provider_name]["weekend" if is_weekend else "weekday"]
 
-                if stats and stats["std"] > 0:
-                    z_score = abs((float(c.value) - stats["mean"]) / stats["std"])
-                    if z_score > 3:
-                        c.fill = orange_fill
-                    elif z_score > 2:
-                        c.fill = yellow_fill
+                    if stats and stats["std"] > 0:
+                        z_score = abs((float(c.value) - stats["mean"]) / stats["std"])
+                        if z_score > 3:
+                            c.fill = orange_fill
+                        elif z_score > 2:
+                            c.fill = yellow_fill
+                        else:
+                            c.fill = green_fill
                     else:
                         c.fill = green_fill
                 else:
+                    # Fallback if out of bounds
                     c.fill = green_fill
             else:
                 c.fill = green_fill
@@ -434,9 +471,9 @@ def open_excel(filename):
 
 if __name__ == "__main__":
     print("="*60)
-    print("PROVIDER COMPLIANCE MONITORING - dbt Pipeline")
+    print("Excel Report Builder from dbt Snowflake Data")
     print("="*60)
-   
+
     # Run dbt
     run_dbt()
    
@@ -475,10 +512,15 @@ if __name__ == "__main__":
    
     print(f"Found {len(all_providers)} providers: {', '.join(all_providers)}")
    
-    # Calculate dynamic summary for stable data (no need to fill, all providers present)
+    # Calculate dynamic summary for stable data with full provider list
+    # PASS the master list and the ECDS specific list to ensure 0-record rows are generated
     df_summary_stable, df_apc_stable, df_op_stable, df_ecds_stable = calculate_dynamic_summary(
-        df_apc_stable, df_op_stable, df_ecds_stable
-    )
+    df_apc_stable, 
+    df_op_stable, 
+    df_ecds_stable,
+    all_providers_list=all_providers, # Ensure we use the full list
+    ecds_providers=ECDS_PROVIDERS     # Ensure ECDS-only Provider subset is respected
+)
    
     print("\n" + "="*60)
     print("Querying Snowflake for unstable data (last 14 days)...")
@@ -503,7 +545,7 @@ if __name__ == "__main__":
         WHERE ACTIVITY_DATE >= CURRENT_DATE - INTERVAL '14 days'
     """)
    
-    # Calculate dynamic summary for unstable data with full provider list (excluding ECDS filtering)
+    # Calculate dynamic summary for unstable data with full provider list (plus ECDS-only filtering)
     # This ensures providers with NO submissions in last 14 days still appear
     df_summary_unstable, df_apc_unstable, df_op_unstable, df_ecds_unstable = calculate_dynamic_summary(
     df_apc_unstable,
@@ -542,11 +584,10 @@ if __name__ == "__main__":
     open_excel(filename)
    
     print("\n" + "="*60)
-    print("✅ dbt Project Pipeline completed successfully!")
+    print("✅ Excel Summary Report completed successfully!")
     print("="*60)
     print(f"📊 Stable data: 60 days (excluding last 14)")
     print(f"⚠️ Unstable data: Last 14 days")
     print(f"👥 Providers tracked: {len(all_providers)}")
     print(f"📁 File: {filename}")
     print("="*60)
-
