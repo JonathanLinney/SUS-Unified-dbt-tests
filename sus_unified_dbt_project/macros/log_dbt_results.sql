@@ -19,25 +19,37 @@
       );
     """) %}
 
-    {% set results_sql %}
-      INSERT INTO COMMISSIONING_MODELLING.DBT_OBSERVABILITY_RUNS
-      SELECT
-        '{{ invocation_id }}' AS run_id,
-        '{{ invocation_id }}' AS invocation_id,
-        CURRENT_TIMESTAMP() AS execution_time,
-        '{{ run_results | map(attribute='status') | list }}' AS status,
-        model_name,
-        rows_affected,
-        execution_time
-      FROM (VALUES
-        {% for result in results %}
-          ('{{ result.node.name }}', '{{ result.status }}', {{ result.adapter_response.rows_affected or 0 }}, {{ result.execution_time }})
+    {# --- Filter for only model results (not tests) --- #}
+    {% set model_results = results | selectattr('node.resource_type', 'in', ['model', 'seed', 'snapshot']) | list %}
+    
+    {% if model_results | length > 0 %}
+      {% set results_sql %}
+        INSERT INTO COMMISSIONING_MODELLING.DBT_OBSERVABILITY_RUNS (
+          run_id,
+          invocation_id,
+          execution_time,
+          status,
+          model_name,
+          rows_affected,
+          execution_time_seconds
+        )
+        VALUES
+        {% for result in model_results %}
+          (
+            '{{ invocation_id }}',
+            '{{ invocation_id }}',
+            CURRENT_TIMESTAMP(),
+            '{{ result.status }}',
+            '{{ result.node.name }}',
+            {{ result.adapter_response.rows_affected | default(0) }},
+            {{ result.execution_time }}
+          )
           {% if not loop.last %},{% endif %}
         {% endfor %}
-      ) AS t(model_name, status, rows_affected, execution_time)
-    {% endset %}
+      {% endset %}
 
-    {% do run_query(results_sql) %}
+      {% do run_query(results_sql) %}
+    {% endif %}
 
   {% endif %}
 {% endmacro %}

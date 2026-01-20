@@ -37,5 +37,5 @@ models:
 
 
 on-run-end: 
-  - "{{ log_test_results() }}"
   - "{{ log_dbt_results() }}"
+  - "{{ log_test_results() }}"
