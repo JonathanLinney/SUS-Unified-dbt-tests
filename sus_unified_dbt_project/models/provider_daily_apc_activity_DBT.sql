@@ -7,6 +7,7 @@
 -- and materialisation type -  technically redundant here if declared in dbt_project.yml so just including it for clarity whilst testing
 -- NOTE (18/12/25): Changed materialization now from view to table to as missing_summary test running too early on blank views, reulting in it being empty
 
+-- Note the post-hook below is taking precedence over the general model description in the schema.yml file
 {{ config(
     materialized='table',
     post_hook=[
