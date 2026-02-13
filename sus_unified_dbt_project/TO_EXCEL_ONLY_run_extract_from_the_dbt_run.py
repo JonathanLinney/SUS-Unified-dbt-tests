@@ -23,7 +23,7 @@ def get_connection():
         user=os.environ["SNOWFLAKE_USER"],
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
-        database=os.environ["SNOWFLAKE_DATABASE"],
+        database="MODELLING",  # Note: hardcoded to DEV for safety/testing - ensure this is correct for your environment
         schema=os.environ["SNOWFLAKE_SCHEMA"],
         role=os.environ.get("SNOWFLAKE_ROLE"),
         authenticator=os.environ.get("SNOWFLAKE_AUTHENTICATOR", "externalbrowser"),

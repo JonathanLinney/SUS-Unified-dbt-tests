@@ -3,6 +3,9 @@
 ##################################################
 # Script runs from the sus_unified_dbt_project folder - set by 'project_dir' variable
 ##################################################
+# 13/2/26 - Note this script writes to DEV, 
+# whereas dbt-analytics writes to PROD - this is to allow testing of dbt changes without affecting PROD data. When running this script, ensure your dbt profile is set to DEV and that the Snowflake credentials in your .env file point to the DEV environment.
+####################################################
 
 import subprocess
 import snowflake.connector
