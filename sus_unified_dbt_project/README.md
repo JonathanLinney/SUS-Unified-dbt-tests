@@ -4,8 +4,9 @@
 ### Then type (to reach the dbt environment): cd sus_unified_dbt_project 
 ### Then type 'dbt run' (and 'dbt test' if including tests too)
 
-### For auto-runs (if running from root folder 'dbt test'):
+### For auto-runs:
 ### Activate virtual environment: venv/scripts/activate
+### Then type (to reach the dbt environment): cd sus_unified_dbt_project 
 ### Run the run_pipeline_dbt script (runs both models & tests) 
 ### -or- type: python sus_unified_dbt_project\run_pipeline_dbt.py
 
